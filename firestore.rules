@@ -1,0 +1,60 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: gallery
+// Fields:
+//   - url: string (required)
+//   - createdAt: timestamp (required)
+//   - order: number (optional)
+//
+// Collection: services
+// Fields:
+//   - serviceId: string (required)
+//   - url: string (required)
+//   - updatedAt: timestamp (required)
+//
+// Collection: users
+// Fields:
+//   - email: string
+//   - role: string
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        request.auth.token.email == "dragonballsam86@gmail.com" ||
+        request.auth.token.email == "sam@mryou.com"
+      );
+    }
+
+    // Gallery Rules
+    match /gallery/{imageId} {
+      allow read: if true; // Publicly readable
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Services Rules
+    match /services/{serviceId} {
+      allow read: if true; // Publicly readable
+      allow create, update, delete: if isAdmin();
+    }
+
+    // User Rules
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAuthenticated() && request.auth.uid == userId && request.resource.data.role == 'user';
+      allow update: if isAdmin();
+    }
+  }
+}

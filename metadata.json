@@ -1,0 +1,7 @@
+{
+  "name": "Mr You Barber",
+  "description": "Professional barbershop in Sala Al Jadida, Morocco. Quality grooming services for the modern gentleman.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

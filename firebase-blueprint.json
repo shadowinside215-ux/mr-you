@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "GalleryImage": {
+      "title": "Gallery Image",
+      "description": "An image displayed in the gallery section",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string", "description": "The image data (URL or base64)" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "order": { "type": "number" }
+      },
+      "required": ["url", "createdAt"]
+    },
+    "ServiceImage": {
+      "title": "Service Image",
+      "description": "The image associated with a specific service",
+      "type": "object",
+      "properties": {
+        "serviceId": { "type": "string", "description": "The ID of the service (e.g., haircut)" },
+        "url": { "type": "string", "description": "The image data" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["serviceId", "url"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile and roles",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] }
+      }
+    }
+  },
+  "firestore": {
+    "/gallery/{imageId}": {
+      "schema": "GalleryImage",
+      "description": "Collection of gallery images"
+    },
+    "/services/{serviceId}": {
+      "schema": "ServiceImage",
+      "description": "Images for specific services"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User roles and profiles"
+    }
+  }
+}
