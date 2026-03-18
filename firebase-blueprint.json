@@ -30,6 +30,20 @@
         "email": { "type": "string" },
         "role": { "type": "string", "enum": ["admin", "user"] }
       }
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "A booking request from a customer",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "service": { "type": "string" },
+        "time": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] }
+      },
+      "required": ["name", "phone", "service", "time", "createdAt"]
     }
   },
   "firestore": {
@@ -44,6 +58,10 @@
     "/users/{userId}": {
       "schema": "User",
       "description": "User roles and profiles"
+    },
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Collection of appointment bookings"
     }
   }
 }

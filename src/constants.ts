@@ -4,6 +4,7 @@ export const BUSINESS_INFO = {
   name: 'Mr You',
   phone: '05 30 18 98 22',
   phoneRaw: '+212530189822',
+  whatsapp: '', // To be updated by user
   address: 'IMM 3, RESIDENCE SALIMA II RDC MAG N 1, Sala Al Jadida 11100, Morocco',
   mapsUrl: 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3307.348622153344!2d-6.7554!3d33.9845!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xda7694949494949%3A0x949494949494949!2sSala%20Al%20Jadida!5e0!3m2!1sen!2sma!4v1710189822000!5m2!1sen!2sma',
   googleMapsDirect: 'https://www.google.com/maps/search/?api=1&query=Mr+You+Barber+Hammam+Sala+Al+Jadida',
@@ -35,6 +36,7 @@ export const TRANSLATIONS: Record<string, Translation> = {
       haircut: { name: 'Haircut', desc: 'Modern and classic styles tailored to your face shape.' },
       beard: { name: 'Beard Trimming', desc: 'Precise shaping and grooming for a sharp look.' },
       grooming: { name: 'Full Grooming', desc: 'The complete package for the modern gentleman.' },
+      hammam: { name: 'Traditional Hammam', desc: 'A relaxing and smooth traditional Moroccan bath experience for men.' },
     },
     whyUs: {
       title: 'Why Choose Mr You',
@@ -47,10 +49,11 @@ export const TRANSLATIONS: Record<string, Translation> = {
     },
     reviews: {
       title: 'Customer Reviews',
-      rating: '4.0 Rating',
+      rating: '5.0 Rating',
       items: [
+        { name: 'Verified Customer', text: 'Woooooo super nice only men i did the hammam it was smouth and relaxing thank you Simohammed 👍🏿👍🏿👍🏿👍🏿🙏🏿', rating: 5 },
+        { name: 'Hayani aji Mohamed', text: 'I am extremely satisfied with the service provided by my hairdresser. The quality of the service is truly remarkable, each visit is a pleasant experience. The value for money is excellent, I always feel valued as a customer.', rating: 5 },
         { name: 'Mohammed Atbuosh', text: 'Excellent salon, clean, and artistic young men. Hussein, God bless, has golden fingers.', rating: 5 },
-        { name: 'Med Anas Mrabti', text: 'The guys working there are great, but the service management needs attention.', rating: 3 },
       ],
     },
     gallery: {
@@ -97,6 +100,7 @@ export const TRANSLATIONS: Record<string, Translation> = {
       haircut: { name: 'Coupe de cheveux', desc: 'Styles modernes et classiques adaptés à votre visage.' },
       beard: { name: 'Taille de barbe', desc: 'Façonnage précis pour un look impeccable.' },
       grooming: { name: 'Soins Complets', desc: 'Le forfait complet pour l\'homme moderne.' },
+      hammam: { name: 'Hammam Traditionnel', desc: 'Une expérience de bain marocain traditionnel relaxante et apaisante pour hommes.' },
     },
     whyUs: {
       title: 'Pourquoi Choisir Mr You',
@@ -109,10 +113,11 @@ export const TRANSLATIONS: Record<string, Translation> = {
     },
     reviews: {
       title: 'Avis Clients',
-      rating: 'Note 4.0',
+      rating: 'Note 5.0',
       items: [
+        { name: 'Client Vérifié', text: 'Woooooo super sympa, réservé aux hommes. J\'ai fait le hammam, c\'était doux et relaxant, merci Simohammed 👍🏿👍🏿👍🏿👍🏿🙏🏿', rating: 5 },
+        { name: 'Hayani aji Mohamed', text: 'Je suis extrêmement satisfait du service fourni par mon coiffeur. La qualité du service est vraiment remarquable, chaque visite est une expérience agréable. Le rapport qualité-prix est excellent.', rating: 5 },
         { name: 'Mohammed Atbuosh', text: 'Salon excellent, propre, et jeunes artistes. Hussein, que Dieu le bénisse, a des doigts en or.', rating: 5 },
-        { name: 'Med Anas Mrabti', text: 'Les gars qui y travaillent sont super, mais la gestion du service a besoin d\'attention.', rating: 3 },
       ],
     },
     gallery: {
@@ -159,6 +164,7 @@ export const TRANSLATIONS: Record<string, Translation> = {
       haircut: { name: 'حلاقة الشعر', desc: 'قصات عصرية وكلاسيكية تناسب شكل وجهك.' },
       beard: { name: 'تشذيب اللحية', desc: 'تحديد وتشذيب دقيق لمظهر جذاب.' },
       grooming: { name: 'عناية كاملة', desc: 'الباقة الكاملة للرجل العصري.' },
+      hammam: { name: 'حمام تقليدي', desc: 'تجربة حمام مغربي تقليدي مريحة وناعمة للرجال.' },
     },
     whyUs: {
       title: 'لماذا تختار Mr You',
@@ -171,10 +177,11 @@ export const TRANSLATIONS: Record<string, Translation> = {
     },
     reviews: {
       title: 'آراء العملاء',
-      rating: 'تقييم 4.0',
+      rating: 'تقييم 5.0',
       items: [
+        { name: 'زبون مجهول', text: 'واو رائع جداً، للرجال فقط. جربت الحمام وكان ناعماً ومريحاً، شكراً سي محمد 👍🏿👍🏿👍🏿👍🏿🙏🏿', rating: 5 },
+        { name: 'Hayani aji Mohamed', text: 'أنا راضٍ للغاية عن الخدمة التي يقدمها الحلاق الخاص بي. جودة الخدمة رائعة حقاً، كل زيارة هي تجربة ممتعة. القيمة مقابل المال ممتازة.', rating: 5 },
         { name: 'Mohammed Atbuosh', text: 'صالون ممتاز، نظيف، وشباب فنانين. حسين تبارك الله أصابع ذهبية.', rating: 5 },
-        { name: 'Med Anas Mrabti', text: 'الدراري لي خدامين عند الله إعمرها دار ولاكين التسيير يحتاج اهتمام.', rating: 3 },
       ],
     },
     gallery: {

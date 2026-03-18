@@ -21,6 +21,7 @@ export interface Translation {
     haircut: { name: string; desc: string };
     beard: { name: string; desc: string };
     grooming: { name: string; desc: string };
+    hammam: { name: string; desc: string };
   };
   whyUs: {
     title: string;

@@ -19,6 +19,15 @@
 //   - email: string
 //   - role: string
 //
+// Collection: appointments
+// Fields:
+//   - name: string (required)
+//   - phone: string (required)
+//   - service: string (required)
+//   - time: string (required)
+//   - createdAt: timestamp (required)
+//   - status: string (optional)
+//
 // ===============================================================
 
 rules_version = '2';
@@ -32,9 +41,10 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
         request.auth.token.email == "dragonballsam86@gmail.com" ||
-        request.auth.token.email == "sam@mryou.com"
+        request.auth.token.email == "sam@mryou.com" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
 
@@ -55,6 +65,13 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       allow create: if isAuthenticated() && request.auth.uid == userId && request.resource.data.role == 'user';
       allow update: if isAdmin();
+    }
+
+    // Appointment Rules
+    match /appointments/{appointmentId} {
+      allow read: if isAdmin();
+      allow create: if true; // Anyone can book
+      allow update, delete: if isAdmin();
     }
   }
 }

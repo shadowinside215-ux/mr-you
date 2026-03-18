@@ -47,8 +47,108 @@ import {
   doc,
   setDoc,
   serverTimestamp,
-  updateDoc
+  updateDoc,
+  getDocFromServer
 } from './firebase';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  // Don't throw if it's just a permission denied during logout or similar
+  if (errInfo.error.includes('permission-denied')) {
+    return;
+  }
+  throw new Error(JSON.stringify(errInfo));
+}
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      let message = "Something went wrong.";
+      try {
+        const parsed = JSON.parse(this.state.error.message);
+        if (parsed.error) message = `Database Error: ${parsed.error}`;
+      } catch (e) {
+        message = this.state.error.message || message;
+      }
+      return (
+        <div className="min-h-screen bg-primary flex items-center justify-center p-6 text-center">
+          <div className="max-w-md w-full bg-slate-900 p-8 rounded-2xl border border-white/10">
+            <X size={48} className="text-red-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-white mb-2">Application Error</h2>
+            <p className="text-slate-400 mb-6">{message}</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="btn-secondary w-full py-3"
+            >
+              Reload Application
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const Logo = ({ className = "w-12 h-12" }: { className?: string }) => (
   <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -59,18 +159,20 @@ const Logo = ({ className = "w-12 h-12" }: { className?: string }) => (
     <rect x="30" y="45" width="18" height="12" rx="4" fill="#FFD700" />
     <rect x="52" y="45" width="18" height="12" rx="4" fill="#FFD700" />
     <path d="M48 51 L52 51" stroke="#FFD700" strokeWidth="2" />
-    {/* Big Beard (Bread typo) */}
-    <path d="M30 60 Q30 95 50 95 Q70 95 70 60 Q60 75 50 75 Q40 75 30 60" fill="#FFD700" />
+    {/* Fluffy and Simple Mustache */}
+    <path d="M50 66 C 42 66, 32 58, 18 58 C 8 58, 5 64, 5 72 C 15 70, 30 76, 50 76 C 70 76, 85 70, 95 72 C 95 64, 92 58, 82 58 C 68 58, 58 66, 50 66 Z" fill="#FFD700" />
+    {/* Big Beard */}
+    <path d="M30 65 Q30 95 50 95 Q70 95 70 65 Q60 78 50 78 Q40 78 30 65" fill="#FFD700" />
   </svg>
 );
 
 export default function App() {
   const [lang, setLang] = useState<Language>('en');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [formStatus, setFormStatus] = useState<'idle' | 'success'>('idle');
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [galleryImages, setGalleryImages] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<any[]>([]);
   const [serviceImages, setServiceImages] = useState<Record<string, string>>({});
   const [stagedImages, setStagedImages] = useState<{ url: string, type: 'gallery' | 'service', id?: string }[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -85,6 +187,17 @@ export default function App() {
   const ADMIN_EMAIL = "sam@mryou.com";
 
   useEffect(() => {
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if(error instanceof Error && error.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration. ");
+        }
+      }
+    };
+    testConnection();
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setIsAdmin(currentUser?.email === ADMIN_EMAIL || currentUser?.email === "dragonballsam86@gmail.com");
@@ -97,9 +210,23 @@ export default function App() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const images = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setGalleryImages(images);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'gallery');
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const q = query(collection(db, 'appointments'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const apps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setAppointments(apps);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'appointments');
+    });
+    return () => unsubscribe();
+  }, [isAdmin]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'services'), (snapshot) => {
@@ -108,6 +235,8 @@ export default function App() {
         services[doc.id] = doc.data().url;
       });
       setServiceImages(services);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'services');
     });
     return () => unsubscribe();
   }, []);
@@ -253,12 +382,6 @@ export default function App() {
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
 
-  const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormStatus('success');
-    setTimeout(() => setFormStatus('idle'), 5000);
-  };
-
   const navLinks = [
     { id: 'services', label: t.nav.services },
     { id: 'why-us', label: t.nav.whyUs },
@@ -268,7 +391,8 @@ export default function App() {
   ];
 
   return (
-    <div className={`min-h-screen font-sans bg-primary text-yellow-400 ${lang === 'ar' ? 'text-right' : 'text-left'}`}>
+    <ErrorBoundary>
+      <div className={`min-h-screen font-sans bg-primary text-yellow-400 ${lang === 'ar' ? 'text-right' : 'text-left'}`}>
       {/* Navigation */}
       <nav className="fixed top-0 w-full z-50 bg-primary/90 backdrop-blur-md border-b border-white/5 shadow-lg">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
@@ -365,7 +489,12 @@ export default function App() {
               <a href={`tel:${BUSINESS_INFO.phoneRaw}`} className="btn-secondary">
                 <Phone size={20} /> {t.hero.callNow}
               </a>
-              <a href="#appointment" className="btn-primary border border-white/10 hover:bg-white/5">
+              <a 
+                href="https://snazzy-crisp-edf285.netlify.app/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="btn-primary border border-white/10 hover:bg-white/5"
+              >
                 <Calendar size={20} /> {t.hero.bookNow}
               </a>
             </div>
@@ -458,7 +587,14 @@ export default function App() {
       </header>
 
       {/* Services Section */}
-      <section id="services" className="section-padding bg-slate-950">
+      <motion.section 
+        id="services" 
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-100px" }}
+        transition={{ duration: 0.8 }}
+        className="section-padding bg-slate-950"
+      >
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-4 text-yellow-400">{t.services.title}</h2>
@@ -470,6 +606,7 @@ export default function App() {
               { id: 'haircut', icon: <Scissors />, ...t.services.haircut },
               { id: 'beard', icon: <User />, ...t.services.beard },
               { id: 'grooming', icon: <CheckCircle />, ...t.services.grooming },
+              { id: 'hammam', icon: <Waves />, ...t.services.hammam },
             ].map((service, idx) => {
               const stagedImg = stagedImages.find(img => img.type === 'service' && img.id === service.id);
               const displayUrl = stagedImg ? stagedImg.url : serviceImages[service.id];
@@ -518,7 +655,7 @@ export default function App() {
                 </div>
                 <div className="p-8">
                   <div className="w-16 h-16 bg-secondary/10 text-secondary rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:bg-secondary group-hover:text-primary transition-all duration-300">
-                    {React.cloneElement(service.icon as React.ReactElement, { size: 32 })}
+                    {React.cloneElement(service.icon as React.ReactElement<any>, { size: 32 })}
                   </div>
                   <h3 className="text-xl font-bold mb-3 text-yellow-400">{service.name}</h3>
                   <p className="text-yellow-400 text-sm leading-relaxed">{service.desc}</p>
@@ -528,10 +665,17 @@ export default function App() {
           })}
           </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* Why Choose Us */}
-      <section id="why-us" className="section-padding bg-primary">
+      <motion.section 
+        id="why-us" 
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-100px" }}
+        transition={{ duration: 0.8 }}
+        className="section-padding bg-primary"
+      >
         <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-16 items-center">
           <div className="order-2 md:order-1">
             <div className="grid grid-cols-2 gap-4">
@@ -608,10 +752,17 @@ export default function App() {
             </div>
           </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* Reviews */}
-      <section id="reviews" className="section-padding bg-slate-950 text-yellow-400">
+      <motion.section 
+        id="reviews" 
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-100px" }}
+        transition={{ duration: 0.8 }}
+        className="section-padding bg-slate-950 text-yellow-400"
+      >
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
             <div>
@@ -647,10 +798,17 @@ export default function App() {
             ))}
           </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* Gallery */}
-      <section id="gallery" className="section-padding bg-primary">
+      <motion.section 
+        id="gallery" 
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-100px" }}
+        transition={{ duration: 0.8 }}
+        className="section-padding bg-primary"
+      >
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-bold mb-4 text-yellow-400">{t.gallery.title}</h2>
@@ -713,61 +871,43 @@ export default function App() {
             )}
           </div>
         </div>
-      </section>
+      </motion.section>
 
-      {/* Appointment Form */}
-      <section id="appointment" className="section-padding bg-slate-950">
-        <div className="max-w-3xl mx-auto bg-primary p-8 md:p-12 rounded-[2rem] shadow-2xl border border-white/5">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-bold mb-2 text-yellow-400">{t.form.title}</h2>
-            <p className="text-yellow-400">{t.hero.subtitle}</p>
-          </div>
-
-          {formStatus === 'success' ? (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-secondary/10 text-secondary p-8 rounded-2xl text-center border border-secondary/20"
+      {/* Appointment CTA Section */}
+      <motion.section 
+        id="appointment" 
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-100px" }}
+        transition={{ duration: 0.8 }}
+        className="section-padding bg-slate-950"
+      >
+        <div className="max-w-3xl mx-auto bg-primary p-8 md:p-12 rounded-[2rem] shadow-2xl border border-white/5 text-center">
+          <div className="mb-10">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-yellow-400">{t.form.title}</h2>
+            <p className="text-yellow-400 text-lg mb-8">{t.hero.subtitle}</p>
+            <a 
+              href="https://snazzy-crisp-edf285.netlify.app/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="btn-secondary inline-flex items-center gap-3 px-12 py-5 text-xl font-bold shadow-xl hover:scale-105 transition-transform"
             >
-              <CheckCircle size={48} className="mx-auto mb-4" />
-              <p className="text-xl font-bold">{t.form.success}</p>
-            </motion.div>
-          ) : (
-            <form onSubmit={handleFormSubmit} className="space-y-6">
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-yellow-400">{t.form.name}</label>
-                  <input required type="text" className="w-full px-4 py-3 rounded-xl border border-white/10 bg-slate-900 text-yellow-400 focus:ring-2 focus:ring-secondary outline-none" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-yellow-400">{t.form.phone}</label>
-                  <input required type="tel" className="w-full px-4 py-3 rounded-xl border border-white/10 bg-slate-900 text-yellow-400 focus:ring-2 focus:ring-secondary outline-none" />
-                </div>
-              </div>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-yellow-400">{t.form.service}</label>
-                  <select className="w-full px-4 py-3 rounded-xl border border-white/10 bg-slate-900 text-yellow-400 focus:ring-2 focus:ring-secondary outline-none">
-                    <option>{t.services.haircut.name}</option>
-                    <option>{t.services.beard.name}</option>
-                    <option>{t.services.grooming.name}</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-yellow-400">{t.form.time}</label>
-                  <input required type="datetime-local" className="w-full px-4 py-3 rounded-xl border border-white/10 bg-slate-900 text-yellow-400 focus:ring-2 focus:ring-secondary outline-none" />
-                </div>
-              </div>
-              <button type="submit" className="btn-secondary w-full py-4 text-lg font-bold">
-                {t.form.submit}
-              </button>
-            </form>
-          )}
+              <Calendar size={24} />
+              {t.hero.bookNow}
+            </a>
+          </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* Location Section */}
-      <section id="location" className="section-padding bg-primary">
+      <motion.section 
+        id="location" 
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-100px" }}
+        transition={{ duration: 0.8 }}
+        className="section-padding bg-primary"
+      >
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
@@ -820,7 +960,7 @@ export default function App() {
             </div>
           </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* Admin Image Manager */}
       {isAdmin && (
@@ -858,6 +998,76 @@ export default function App() {
         </section>
       )}
 
+      {/* Admin Appointments Section */}
+      {isAdmin && (
+        <section className="section-padding bg-slate-900 border-t border-white/5">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="flex items-center justify-between mb-12">
+              <div>
+                <h2 className="text-3xl font-bold text-yellow-400 mb-2">Manage Appointments</h2>
+                <p className="text-slate-400">View and manage booking requests from customers.</p>
+              </div>
+              <div className="bg-secondary/20 text-secondary px-4 py-2 rounded-full text-sm font-bold border border-secondary/20">
+                {appointments.length} Total Requests
+              </div>
+            </div>
+            
+            <div className="grid gap-4">
+              {appointments.length === 0 ? (
+                <div className="text-center py-12 bg-primary/50 rounded-2xl border border-white/5">
+                  <Calendar size={48} className="mx-auto mb-4 text-slate-700" />
+                  <p className="text-slate-500">No appointments yet.</p>
+                </div>
+              ) : (
+                appointments.map((app) => (
+                  <div key={app.id} className="bg-primary p-6 rounded-2xl border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-secondary/10 text-secondary rounded-xl flex items-center justify-center flex-shrink-0">
+                        <User size={24} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-white text-lg">{app.name}</h4>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
+                          <a href={`tel:${app.phone}`} className="text-secondary text-sm flex items-center gap-1 hover:underline">
+                            <Phone size={14} /> {app.phone}
+                          </a>
+                          <span className="text-slate-400 text-sm flex items-center gap-1">
+                            <Scissors size={14} /> {app.service}
+                          </span>
+                          <span className="text-slate-400 text-sm flex items-center gap-1">
+                            <Clock size={14} /> {new Date(app.time).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={async () => {
+                          if (confirm('Delete this appointment?')) {
+                            await deleteDoc(doc(db, 'appointments', app.id));
+                          }
+                        }}
+                        className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                      <a 
+                        href={`https://wa.me/${app.phone.replace(/\D/g, '')}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="btn-secondary py-2 px-4 text-sm"
+                      >
+                        Contact on WhatsApp
+                      </a>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Footer */}
       <footer className="bg-slate-950 text-yellow-400 py-12 px-6">
         <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-12 mb-12">
@@ -881,6 +1091,7 @@ export default function App() {
               <li><a href="#services" className="hover:text-secondary transition-colors">{t.services.haircut.name}</a></li>
               <li><a href="#services" className="hover:text-secondary transition-colors">{t.services.beard.name}</a></li>
               <li><a href="#services" className="hover:text-secondary transition-colors">{t.services.grooming.name}</a></li>
+              <li><a href="#services" className="hover:text-secondary transition-colors">{t.services.hammam.name}</a></li>
             </ul>
           </div>
           <div>
@@ -1037,5 +1248,6 @@ export default function App() {
       {/* Spacer for sticky button on mobile */}
       <div className="h-20 md:hidden" />
     </div>
-  );
+  </ErrorBoundary>
+);
 }
