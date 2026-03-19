@@ -598,7 +598,7 @@ export default function App() {
                 <Phone size={20} /> {t.hero.callNow}
               </a>
               <a 
-                href="https://snazzy-crisp-edf285.netlify.app/" 
+                href="https://mr-you-app-final.netlify.app/" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="btn-primary border border-white/10 hover:bg-white/5"
@@ -1029,7 +1029,7 @@ export default function App() {
             <h2 className="text-3xl md:text-4xl font-bold mb-4 text-yellow-400">{t.form.title}</h2>
             <p className="text-yellow-400 text-lg mb-8">{t.hero.subtitle}</p>
             <a 
-              href="https://snazzy-crisp-edf285.netlify.app/" 
+              href="https://mr-you-app-final.netlify.app/" 
               target="_blank" 
               rel="noopener noreferrer"
               className="btn-secondary inline-flex items-center gap-3 px-12 py-5 text-xl font-bold shadow-xl hover:scale-105 transition-transform"
