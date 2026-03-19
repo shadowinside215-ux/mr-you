@@ -49,12 +49,7 @@ import {
   setDoc,
   serverTimestamp,
   updateDoc,
-  getDocFromServer,
-  storage,
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject
+  getDocFromServer
 } from './firebase';
 
 enum OperationType {
@@ -177,9 +172,10 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isManager, setIsManager] = useState(false);
+  const canManage = isAdmin || isManager;
   const [galleryImages, setGalleryImages] = useState<any[]>([]);
   const [galleryVideos, setGalleryVideos] = useState<any[]>([]);
-  const [appointments, setAppointments] = useState<any[]>([]);
   const [serviceImages, setServiceImages] = useState<Record<string, string>>({});
   const [stagedImages, setStagedImages] = useState<{ url: string, type: 'gallery' | 'service', id?: string }[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -192,8 +188,12 @@ export default function App() {
   const t = TRANSLATIONS[lang];
 
   const ADMIN_NAME = "sam";
-  const ADMIN_PASS = "sam123";
+  const ADMIN_PASS = "sam2006";
   const ADMIN_EMAIL = "sam@mryou.com";
+
+  const MANAGER_NAME = "manager";
+  const MANAGER_PASS = "manager123";
+  const MANAGER_EMAIL = "manager@mryou.com";
 
   useEffect(() => {
     const testConnection = async () => {
@@ -210,6 +210,7 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setIsAdmin(currentUser?.email === ADMIN_EMAIL || currentUser?.email === "dragonballsam86@gmail.com");
+      setIsManager(currentUser?.email === MANAGER_EMAIL);
     });
     return () => unsubscribe();
   }, []);
@@ -235,18 +236,6 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    const q = query(collection(db, 'appointments'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const apps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setAppointments(apps);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'appointments');
-    });
-    return () => unsubscribe();
-  }, [isAdmin]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'services'), (snapshot) => {
@@ -290,23 +279,33 @@ export default function App() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    let email = '';
+    let password = '';
+
     if (loginData.name === ADMIN_NAME && loginData.password === ADMIN_PASS) {
+      email = ADMIN_EMAIL;
+      password = ADMIN_PASS;
+    } else if (loginData.name === MANAGER_NAME && loginData.password === MANAGER_PASS) {
+      email = MANAGER_EMAIL;
+      password = MANAGER_PASS;
+    }
+
+    if (email && password) {
       try {
-        // We use a consistent email for the 'sam' user
-        await signInWithEmailAndPassword(auth, ADMIN_EMAIL, ADMIN_PASS);
+        await signInWithEmailAndPassword(auth, email, password);
         setShowLoginModal(false);
         setLoginData({ name: '', password: '' });
       } catch (error: any) {
-        // Newer Firebase versions use 'auth/invalid-credential' for both wrong password and missing user
         if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-          // Try to create the user if it's the first time
           try {
-            await createUserWithEmailAndPassword(auth, ADMIN_EMAIL, ADMIN_PASS);
+            await createUserWithEmailAndPassword(auth, email, password);
             setShowLoginModal(false);
             setLoginData({ name: '', password: '' });
           } catch (createError: any) {
             if (createError.code === 'auth/operation-not-allowed') {
               alert("CRITICAL: Email/Password login is disabled in your Firebase Console. Please enable it in Authentication > Sign-in method.");
+            } else if (createError.code === 'auth/email-already-in-use') {
+              alert("Login failed: Incorrect password. This account already exists in Firebase with a different password. If you recently changed the password in the code, you must delete the existing user in the Firebase console (Authentication tab) so it can be re-created with the new password.");
             } else {
               console.error("Auth creation failed", createError);
               alert("Login failed: " + createError.message);
@@ -396,9 +395,17 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 1GB limit check (1024 * 1024 * 1024 bytes)
+    // 1GB limit check
     if (file.size > 1073741824) {
       alert("File is too large. Maximum size is 1GB.");
+      return;
+    }
+
+    const cloudName = (import.meta as any).env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+    if (!cloudName || !uploadPreset) {
+      alert("Cloudinary configuration is missing. Please set VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET in Secrets.");
       return;
     }
 
@@ -406,34 +413,51 @@ export default function App() {
     setUploadProgress(0);
 
     try {
-      const storageRef = ref(storage, `videos/${Date.now()}_${file.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, file);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', uploadPreset);
+      formData.append('resource_type', 'video');
 
-      uploadTask.on('state_changed', 
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, true);
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const progress = (event.loaded / event.total) * 100;
           setUploadProgress(progress);
-        }, 
-        (error) => {
-          console.error("Upload failed", error);
-          alert("Upload failed: " + error.message);
-          setIsUploading(false);
-          setUploadProgress(null);
-        }, 
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+        }
+      };
+
+      xhr.onload = async () => {
+        if (xhr.status === 200) {
+          const response = JSON.parse(xhr.responseText);
           await addDoc(collection(db, 'videos'), {
-            url: downloadURL,
+            url: response.secure_url,
+            publicId: response.public_id,
             ratio: videoRatio,
             name: file.name,
-            storagePath: storageRef.fullPath,
             createdAt: serverTimestamp()
           });
           setIsUploading(false);
           setUploadProgress(null);
-          alert("Video uploaded successfully!");
+          alert("Video uploaded successfully to Cloudinary!");
+        } else {
+          const error = JSON.parse(xhr.responseText);
+          console.error("Cloudinary upload failed", error);
+          alert("Upload failed: " + (error.error?.message || "Unknown error"));
+          setIsUploading(false);
+          setUploadProgress(null);
         }
-      );
+      };
+
+      xhr.onerror = () => {
+        console.error("XHR error");
+        alert("Upload failed due to a network error.");
+        setIsUploading(false);
+        setUploadProgress(null);
+      };
+
+      xhr.send(formData);
     } catch (error) {
       console.error("Video upload setup failed", error);
       alert("Failed to start upload.");
@@ -442,22 +466,17 @@ export default function App() {
     }
   };
 
-  const deleteGalleryVideo = async (id: string, storagePath: string) => {
+  const deleteGalleryVideo = async (id: string, publicId?: string) => {
     if (!confirm("Are you sure you want to delete this video?")) return;
     try {
-      // Delete from storage first
-      const storageRef = ref(storage, storagePath);
-      await deleteObject(storageRef);
-      // Then delete from firestore
+      // Note: Deleting from Cloudinary requires a signed request or a backend proxy.
+      // For this client-side implementation, we'll delete the record from Firestore.
+      // In a production app, you'd call a backend endpoint to delete from Cloudinary.
       await deleteDoc(doc(db, 'videos', id));
+      alert("Video record removed from gallery.");
     } catch (error) {
       console.error("Delete failed", error);
-      // If storage delete fails (e.g. file missing), still try to delete firestore doc
-      try {
-        await deleteDoc(doc(db, 'videos', id));
-      } catch (fsError) {
-        console.error("Firestore delete failed", fsError);
-      }
+      alert("Failed to delete video record.");
     }
   };
 
@@ -622,7 +641,7 @@ export default function App() {
                   <div className="text-center p-6">
                     <ImageIcon size={48} className="mx-auto mb-4 text-slate-700" />
                     <p className="text-slate-500 text-sm">No Hero Image</p>
-                    {isAdmin && (
+                    {canManage && (
                       <div className="mt-4 flex flex-col gap-2">
                         <label className="inline-block cursor-pointer bg-secondary text-primary px-4 py-2 rounded-lg font-bold text-xs">
                           Upload Hero File
@@ -639,7 +658,7 @@ export default function App() {
                   </div>
                 );
               })()}
-              {isAdmin && (serviceImages['hero'] || stagedImages.some(img => img.id === 'hero')) && (
+              {canManage && (serviceImages['hero'] || stagedImages.some(img => img.id === 'hero')) && (
                 <div className="absolute top-4 right-4 flex gap-2">
                   <label className="cursor-pointer bg-secondary/80 backdrop-blur-md text-primary p-2 rounded-full shadow-lg">
                     <Upload size={16} />
@@ -696,6 +715,7 @@ export default function App() {
               { id: 'beard', icon: <User />, ...t.services.beard },
               { id: 'grooming', icon: <CheckCircle />, ...t.services.grooming },
               { id: 'hammam', icon: <Waves />, ...t.services.hammam },
+              { id: 'vip', icon: <Star />, ...t.services.vip },
             ].map((service, idx) => {
               const stagedImg = stagedImages.find(img => img.type === 'service' && img.id === service.id);
               const displayUrl = stagedImg ? stagedImg.url : serviceImages[service.id];
@@ -721,7 +741,7 @@ export default function App() {
                         <ImageIcon size={32} />
                       </div>
                     )}
-                    {isAdmin && (
+                    {canManage && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity gap-2">
                       <label className="cursor-pointer bg-secondary text-primary p-2 rounded-full">
                         <Upload size={20} />
@@ -768,32 +788,35 @@ export default function App() {
         <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-16 items-center">
           <div className="order-2 md:order-1">
             <div className="grid grid-cols-2 gap-4">
-              <div className="aspect-square rounded-2xl bg-slate-900 border border-white/5 overflow-hidden relative group">
-                {(() => {
-                  const staged = stagedImages.find(img => img.type === 'service' && img.id === 'why1');
-                  const url = staged ? staged.url : serviceImages['why1'];
-                  if (url) return (
-                    <div className="relative w-full h-full">
-                      <img src={url} className={`w-full h-full object-cover ${staged ? 'opacity-40' : ''}`} referrerPolicy="no-referrer" />
-                      {staged && <div className="absolute inset-0 flex items-center justify-center"><span className="bg-yellow-400 text-primary px-2 py-1 rounded-full text-[8px] font-bold uppercase animate-pulse">Pending</span></div>}
+              <div className="flex flex-col gap-4">
+                <div className="aspect-square rounded-2xl bg-slate-900 border border-white/5 overflow-hidden relative group">
+                  {(() => {
+                    const staged = stagedImages.find(img => img.type === 'service' && img.id === 'why1');
+                    const url = staged ? staged.url : serviceImages['why1'];
+                    if (url) return (
+                      <div className="relative w-full h-full">
+                        <img src={url} className={`w-full h-full object-cover ${staged ? 'opacity-40' : ''}`} referrerPolicy="no-referrer" />
+                        {staged && <div className="absolute inset-0 flex items-center justify-center"><span className="bg-yellow-400 text-primary px-2 py-1 rounded-full text-[8px] font-bold uppercase animate-pulse">Pending</span></div>}
+                      </div>
+                    );
+                    return <div className="w-full h-full flex items-center justify-center text-slate-800"><ImageIcon /></div>;
+                  })()}
+                  {canManage && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity gap-2">
+                      <label className="cursor-pointer bg-secondary text-primary p-2 rounded-full">
+                        <Upload size={16} />
+                        <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, 'service', 'why1')} accept="image/*" />
+                      </label>
+                      <button onClick={() => setShowUrlInput({ type: 'service', id: 'why1' })} className="bg-white text-primary p-2 rounded-full">
+                        <Plus size={16} />
+                      </button>
+                      <button onClick={() => deleteServiceImage('why1')} className="bg-red-500 text-white p-2 rounded-full">
+                        <Trash2 size={16} />
+                      </button>
                     </div>
-                  );
-                  return <div className="w-full h-full flex items-center justify-center text-slate-800"><ImageIcon /></div>;
-                })()}
-                {isAdmin && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity gap-2">
-                    <label className="cursor-pointer bg-secondary text-primary p-2 rounded-full">
-                      <Upload size={16} />
-                      <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, 'service', 'why1')} accept="image/*" />
-                    </label>
-                    <button onClick={() => setShowUrlInput({ type: 'service', id: 'why1' })} className="bg-white text-primary p-2 rounded-full">
-                      <Plus size={16} />
-                    </button>
-                    <button onClick={() => deleteServiceImage('why1')} className="bg-red-500 text-white p-2 rounded-full">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                )}
+                  )}
+                </div>
+                <p className="text-yellow-400 text-[10px] font-bold uppercase tracking-widest text-center">{t.whyUs.checkApp}</p>
               </div>
               <div className="aspect-[2/3] rounded-2xl bg-slate-900 border border-white/5 overflow-hidden mt-8 relative group">
                 {(() => {
@@ -807,7 +830,7 @@ export default function App() {
                   );
                   return <div className="w-full h-full flex items-center justify-center text-slate-800"><ImageIcon /></div>;
                 })()}
-                {isAdmin && (
+                {canManage && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity gap-2">
                     <label className="cursor-pointer bg-secondary text-primary p-2 rounded-full">
                       <Upload size={16} />
@@ -903,10 +926,40 @@ export default function App() {
             <h2 className="text-3xl md:text-4xl font-bold mb-4 text-yellow-400">{t.gallery.title}</h2>
             <div className="w-20 h-1 bg-secondary mx-auto rounded-full" />
           </div>
+
+          {/* Videos Section */}
+          {galleryVideos.length > 0 && (
+            <div className="mb-16">
+              <div className="text-center mb-12">
+                <h3 className="text-2xl font-bold mb-4 text-yellow-400 uppercase tracking-widest">Video Highlights</h3>
+                <div className="w-12 h-1 bg-secondary mx-auto rounded-full" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                {galleryVideos.map((video) => (
+                  <div key={video.id} className={`relative group rounded-3xl overflow-hidden bg-slate-900 shadow-2xl border border-white/5 ${video.ratio === '9:16' ? 'aspect-[9/16]' : video.ratio === '1:1' ? 'aspect-square' : 'aspect-video'}`}>
+                    <video 
+                      src={video.url} 
+                      className="w-full h-full object-cover" 
+                      controls 
+                      playsInline
+                    />
+                    {canManage && (
+                      <button 
+                        onClick={() => deleteGalleryVideo(video.id, video.publicId)}
+                        className="absolute top-4 right-4 p-3 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-xl"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
             {/* Staged Gallery Images */}
-            {isAdmin && stagedImages.filter(img => img.type === 'gallery').map((img, idx) => (
+            {canManage && stagedImages.filter(img => img.type === 'gallery').map((img, idx) => (
               <div key={`staged-${idx}`} className="relative group rounded-2xl overflow-hidden aspect-[3/4] border-2 border-yellow-400/50">
                 <img src={img.url} alt="Staged Gallery" className="w-full h-full object-cover opacity-50" referrerPolicy="no-referrer" />
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -925,7 +978,7 @@ export default function App() {
               galleryImages.map((img) => (
                 <div key={img.id} className="relative group rounded-2xl overflow-hidden aspect-[3/4]">
                   <img src={img.url} alt="Gallery" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  {isAdmin && (
+                  {canManage && (
                     <button 
                       onClick={() => deleteGalleryImage(img.id)}
                       className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
@@ -942,7 +995,7 @@ export default function App() {
               </div>
             )}
             
-            {isAdmin && (
+            {canManage && (
               <div className="aspect-[3/4] flex flex-col gap-2">
                 <label className="flex-1 border-2 border-dashed border-secondary/30 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-secondary/5 transition-colors">
                   <Plus className="text-secondary" />
@@ -959,36 +1012,6 @@ export default function App() {
               </div>
             )}
           </div>
-
-          {/* Videos Section */}
-          {galleryVideos.length > 0 && (
-            <div className="mt-16">
-              <div className="text-center mb-12">
-                <h3 className="text-2xl font-bold mb-4 text-yellow-400 uppercase tracking-widest">Video Highlights</h3>
-                <div className="w-12 h-1 bg-secondary mx-auto rounded-full" />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                {galleryVideos.map((video) => (
-                  <div key={video.id} className={`relative group rounded-3xl overflow-hidden bg-slate-900 shadow-2xl border border-white/5 ${video.ratio === '9:16' ? 'aspect-[9/16]' : video.ratio === '1:1' ? 'aspect-square' : 'aspect-video'}`}>
-                    <video 
-                      src={video.url} 
-                      className="w-full h-full object-cover" 
-                      controls 
-                      playsInline
-                    />
-                    {isAdmin && (
-                      <button 
-                        onClick={() => deleteGalleryVideo(video.id, video.storagePath)}
-                        className="absolute top-4 right-4 p-3 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-xl"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </motion.section>
 
@@ -1081,11 +1104,11 @@ export default function App() {
         </div>
       </motion.section>
 
-      {/* Admin Image Manager */}
-      {isAdmin && (
+      {/* Admin/Manager Image Manager */}
+      {canManage && (
         <section className="section-padding bg-slate-900 border-t border-white/10">
           <div className="max-w-7xl mx-auto">
-            <h2 className="text-3xl font-bold mb-8 text-yellow-400">Admin Image Manager</h2>
+            <h2 className="text-3xl font-bold mb-8 text-yellow-400">Admin/Manager Image Manager</h2>
             <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
               {galleryImages.map((img) => (
                 <div key={img.id} className="relative group rounded-lg overflow-hidden aspect-square border border-white/5">
@@ -1117,14 +1140,15 @@ export default function App() {
         </section>
       )}
 
-      {/* Admin Video Manager */}
-      {isAdmin && (
+      {/* Admin/Manager Video Manager */}
+      {canManage && (
         <section className="section-padding bg-slate-950 border-t border-white/10">
           <div className="max-w-7xl mx-auto">
             <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-6">
               <div>
-                <h2 className="text-3xl font-bold text-yellow-400">Admin Video Manager</h2>
-                <p className="text-slate-400">Upload and manage videos (Support up to 1GB).</p>
+                <h2 className="text-3xl font-bold text-yellow-400">Admin/Manager Video Manager</h2>
+                <p className="text-slate-400">Upload and manage videos via Cloudinary (Support up to 1GB).</p>
+                <p className="text-xs text-red-400 mt-2">Note: Ensure VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET are set in Secrets.</p>
               </div>
               <div className="flex flex-col sm:flex-row items-center gap-4">
                 <div className="flex bg-primary rounded-xl p-1 border border-white/10">
@@ -1163,94 +1187,41 @@ export default function App() {
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-              {galleryVideos.map((video) => (
-                <div key={video.id} className={`relative group rounded-2xl overflow-hidden bg-primary border border-white/5 ${video.ratio === '9:16' ? 'aspect-[9/16]' : video.ratio === '1:1' ? 'aspect-square' : 'aspect-video'}`}>
-                  <video src={video.url} className="w-full h-full object-cover" muted loop onMouseOver={e => e.currentTarget.play()} onMouseOut={e => e.currentTarget.pause()} />
-                  <div className="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-[10px] font-bold text-yellow-400 uppercase tracking-widest">
-                    {video.ratio}
+              {galleryVideos.map((video) => {
+                // Optimize Cloudinary URL if it's a Cloudinary URL
+                let videoUrl = video.url;
+                if (videoUrl.includes('cloudinary.com')) {
+                  // Add f_auto,q_auto for optimization
+                  videoUrl = videoUrl.replace('/upload/', '/upload/f_auto,q_auto/');
+                }
+                
+                return (
+                  <div key={video.id} className={`relative group rounded-2xl overflow-hidden bg-primary border border-white/5 ${video.ratio === '9:16' ? 'aspect-[9/16]' : video.ratio === '1:1' ? 'aspect-square' : 'aspect-video'}`}>
+                    <video 
+                      src={videoUrl} 
+                      className="w-full h-full object-cover" 
+                      muted 
+                      loop 
+                      playsInline
+                      onMouseOver={e => e.currentTarget.play()} 
+                      onMouseOut={e => e.currentTarget.pause()} 
+                    />
+                    <div className="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-[10px] font-bold text-yellow-400 uppercase tracking-widest">
+                      {video.ratio}
+                    </div>
+                    <button 
+                      onClick={() => deleteGalleryVideo(video.id, video.publicId)}
+                      className="absolute inset-0 flex items-center justify-center bg-red-500/80 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 size={32} />
+                    </button>
                   </div>
-                  <button 
-                    onClick={() => deleteGalleryVideo(video.id, video.storagePath)}
-                    className="absolute inset-0 flex items-center justify-center bg-red-500/80 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 size={32} />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
               {galleryVideos.length === 0 && !isUploading && (
                 <div className="col-span-full py-12 text-center bg-primary/30 rounded-3xl border border-dashed border-white/10">
                   <p className="text-slate-500">No videos uploaded yet.</p>
                 </div>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Admin Appointments Section */}
-      {isAdmin && (
-        <section className="section-padding bg-slate-900 border-t border-white/5">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="flex items-center justify-between mb-12">
-              <div>
-                <h2 className="text-3xl font-bold text-yellow-400 mb-2">Manage Appointments</h2>
-                <p className="text-slate-400">View and manage booking requests from customers.</p>
-              </div>
-              <div className="bg-secondary/20 text-secondary px-4 py-2 rounded-full text-sm font-bold border border-secondary/20">
-                {appointments.length} Total Requests
-              </div>
-            </div>
-            
-            <div className="grid gap-4">
-              {appointments.length === 0 ? (
-                <div className="text-center py-12 bg-primary/50 rounded-2xl border border-white/5">
-                  <Calendar size={48} className="mx-auto mb-4 text-slate-700" />
-                  <p className="text-slate-500">No appointments yet.</p>
-                </div>
-              ) : (
-                appointments.map((app) => (
-                  <div key={app.id} className="bg-primary p-6 rounded-2xl border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 bg-secondary/10 text-secondary rounded-xl flex items-center justify-center flex-shrink-0">
-                        <User size={24} />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-white text-lg">{app.name}</h4>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
-                          <a href={`tel:${app.phone}`} className="text-secondary text-sm flex items-center gap-1 hover:underline">
-                            <Phone size={14} /> {app.phone}
-                          </a>
-                          <span className="text-slate-400 text-sm flex items-center gap-1">
-                            <Scissors size={14} /> {app.service}
-                          </span>
-                          <span className="text-slate-400 text-sm flex items-center gap-1">
-                            <Clock size={14} /> {new Date(app.time).toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button 
-                        onClick={async () => {
-                          if (confirm('Delete this appointment?')) {
-                            await deleteDoc(doc(db, 'appointments', app.id));
-                          }
-                        }}
-                        className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                      <a 
-                        href={`https://wa.me/${app.phone.replace(/\D/g, '')}`} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="btn-secondary py-2 px-4 text-sm"
-                      >
-                        Contact on WhatsApp
-                      </a>
-                    </div>
-                  </div>
-                ))
               )}
             </div>
           </div>
@@ -1281,6 +1252,7 @@ export default function App() {
               <li><a href="#services" className="hover:text-secondary transition-colors">{t.services.beard.name}</a></li>
               <li><a href="#services" className="hover:text-secondary transition-colors">{t.services.grooming.name}</a></li>
               <li><a href="#services" className="hover:text-secondary transition-colors">{t.services.hammam.name}</a></li>
+              <li><a href="#services" className="hover:text-secondary transition-colors">{t.services.vip.name}</a></li>
             </ul>
           </div>
           <div>
@@ -1294,7 +1266,7 @@ export default function App() {
               </div>
             ) : (
               <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors">
-                <LogIn size={16} /> Admin Login
+                <LogIn size={16} /> Admin/Manager Login
               </button>
             )}
           </div>
@@ -1324,7 +1296,7 @@ export default function App() {
               <button onClick={() => setShowLoginModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-white">
                 <X size={24} />
               </button>
-              <h3 className="text-2xl font-bold mb-6 text-white">Admin Login</h3>
+              <h3 className="text-2xl font-bold mb-6 text-white">Admin/Manager Login</h3>
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
                   <label className="block text-sm font-bold text-slate-400 mb-2">Name</label>
@@ -1356,7 +1328,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Admin Save Button */}
-      {isAdmin && stagedImages.length > 0 && (
+      {canManage && stagedImages.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-full max-w-xs px-6">
           <motion.button 
             initial={{ y: 100, opacity: 0 }}

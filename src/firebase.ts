@@ -1,13 +1,11 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, orderBy, addDoc, deleteDoc, updateDoc, serverTimestamp, getDocFromServer } from 'firebase/firestore';
-import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 
 export { 
@@ -29,11 +27,4 @@ export {
   updateDoc,
   serverTimestamp,
   getDocFromServer
-};
-
-export {
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject
 };

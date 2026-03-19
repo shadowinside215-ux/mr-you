@@ -22,15 +22,21 @@ export interface Translation {
     beard: { name: string; desc: string };
     grooming: { name: string; desc: string };
     hammam: { name: string; desc: string };
+    vip: { name: string; desc: string };
   };
   whyUs: {
     title: string;
+    checkApp: string;
     items: { title: string; desc: string }[];
   };
   reviews: {
     title: string;
     rating: string;
     items: { name: string; text: string; rating: number }[];
+  };
+  reviews_section?: {
+    title: string;
+    subtitle: string;
   };
   gallery: {
     title: string;

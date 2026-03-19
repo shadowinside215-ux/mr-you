@@ -37,9 +37,11 @@ export const TRANSLATIONS: Record<string, Translation> = {
       beard: { name: 'Beard Trimming', desc: 'Precise shaping and grooming for a sharp look.' },
       grooming: { name: 'Full Grooming', desc: 'The complete package for the modern gentleman.' },
       hammam: { name: 'Traditional Hammam', desc: 'A relaxing and smooth traditional Moroccan bath experience for men.' },
+      vip: { name: 'VIP Service', desc: 'Exclusive premium grooming experience with top-tier products and extra care.' },
     },
     whyUs: {
       title: 'Why Choose Mr You',
+      checkApp: 'check out Mr you booking app below',
       items: [
         { title: 'Experienced Barbers', desc: 'Our team has years of expertise in men\'s grooming.' },
         { title: 'Clean Environment', desc: 'We maintain the highest standards of hygiene and comfort.' },
@@ -55,6 +57,10 @@ export const TRANSLATIONS: Record<string, Translation> = {
         { name: 'Hayani aji Mohamed', text: 'I am extremely satisfied with the service provided by my hairdresser. The quality of the service is truly remarkable, each visit is a pleasant experience. The value for money is excellent, I always feel valued as a customer.', rating: 5 },
         { name: 'Mohammed Atbuosh', text: 'Excellent salon, clean, and artistic young men. Hussein, God bless, has golden fingers.', rating: 5 },
       ],
+    },
+    reviews_section: {
+      title: 'Customer Reviews',
+      subtitle: 'Over 25 reviews on Google Maps. We are proud of the quality of our service.',
     },
     gallery: {
       title: 'Our Gallery',
@@ -93,7 +99,7 @@ export const TRANSLATIONS: Record<string, Translation> = {
       title: 'Mr You: Coiffeur Professionnel',
       subtitle: 'Découvrez le meilleur du toilettage à Sala Al Jadida. Faites confiance à nos experts.',
       callNow: 'Appeler',
-      bookNow: 'Preندre RDV',
+      bookNow: 'Prendre RDV',
     },
     services: {
       title: 'Nos Services',
@@ -101,9 +107,11 @@ export const TRANSLATIONS: Record<string, Translation> = {
       beard: { name: 'Taille de barbe', desc: 'Façonnage précis pour un look impeccable.' },
       grooming: { name: 'Soins Complets', desc: 'Le forfait complet pour l\'homme moderne.' },
       hammam: { name: 'Hammam Traditionnel', desc: 'Une expérience de bain marocain traditionnel relaxante et apaisante pour hommes.' },
+      vip: { name: 'Service VIP', desc: 'Expérience de toilettage premium exclusive avec des produits haut de gamme.' },
     },
     whyUs: {
       title: 'Pourquoi Choisir Mr You',
+      checkApp: 'découvrez l\'application de réservation Mr You ci-dessous',
       items: [
         { title: 'Barbiers Expérimentés', desc: 'Notre équipe a des années d\'expertise.' },
         { title: 'Environnement Propre', desc: 'Nous maintenons les plus hauts standards d\'hygiène.' },
@@ -120,6 +128,10 @@ export const TRANSLATIONS: Record<string, Translation> = {
         { name: 'Mohammed Atbuosh', text: 'Salon excellent, propre, et jeunes artistes. Hussein, que Dieu le bénisse, a des doigts en or.', rating: 5 },
       ],
     },
+    reviews_section: {
+      title: 'Avis Clients',
+      subtitle: 'Plus de 25 avis sur Google Maps. Nous sommes fiers de la qualité de notre service.',
+    },
     gallery: {
       title: 'Notre Galerie',
     },
@@ -131,7 +143,7 @@ export const TRANSLATIONS: Record<string, Translation> = {
       openNow: 'Ouvert Maintenant',
     },
     form: {
-      title: 'Prendre Rendez-vous',
+      title: 'Prendre un Rendez-vous',
       name: 'Nom Complet',
       phone: 'Numéro de Téléphone',
       service: 'Choisir un Service',
@@ -165,9 +177,11 @@ export const TRANSLATIONS: Record<string, Translation> = {
       beard: { name: 'تشذيب اللحية', desc: 'تحديد وتشذيب دقيق لمظهر جذاب.' },
       grooming: { name: 'عناية كاملة', desc: 'الباقة الكاملة للرجل العصري.' },
       hammam: { name: 'حمام تقليدي', desc: 'تجربة حمام مغربي تقليدي مريحة وناعمة للرجال.' },
+      vip: { name: 'خدمة VIP', desc: 'تجربة حلاقة فاخرة وحصرية مع منتجات عالية الجودة وعناية فائقة.' },
     },
     whyUs: {
       title: 'لماذا تختار Mr You',
+      checkApp: 'اطلع على تطبيق حجز Mr You أدناه',
       items: [
         { title: 'حلاقون ذوو خبرة', desc: 'فريقنا لديه سنوات من الخبرة في الحلاقة.' },
         { title: 'بيئة نظيفة', desc: 'نحافظ على أعلى معايير النظافة والراحة.' },
@@ -183,6 +197,10 @@ export const TRANSLATIONS: Record<string, Translation> = {
         { name: 'Hayani aji Mohamed', text: 'أنا راضٍ للغاية عن الخدمة التي يقدمها الحلاق الخاص بي. جودة الخدمة رائعة حقاً، كل زيارة هي تجربة ممتعة. القيمة مقابل المال ممتازة.', rating: 5 },
         { name: 'Mohammed Atbuosh', text: 'صالون ممتاز، نظيف، وشباب فنانين. حسين تبارك الله أصابع ذهبية.', rating: 5 },
       ],
+    },
+    reviews_section: {
+      title: 'آراء العملاء',
+      subtitle: 'أكثر من 25 تقييماً على خرائط جوجل. نحن فخورون بجودة خدمتنا.',
     },
     gallery: {
       title: 'معرضنا',

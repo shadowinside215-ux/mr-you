@@ -47,15 +47,16 @@
     },
     "GalleryVideo": {
       "title": "Gallery Video",
-      "description": "A video displayed in the gallery section",
+      "description": "A video displayed in the gallery section (Stored in Cloudinary)",
       "type": "object",
       "properties": {
-        "url": { "type": "string", "description": "The download URL of the video" },
-        "storagePath": { "type": "string", "description": "The path to the video in Firebase Storage" },
+        "url": { "type": "string", "description": "The secure URL of the video from Cloudinary" },
+        "publicId": { "type": "string", "description": "The public ID of the video in Cloudinary" },
         "ratio": { "type": "string", "enum": ["9:16", "16:9", "1:1"] },
+        "name": { "type": "string", "description": "The original name of the file" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["url", "storagePath", "ratio", "createdAt"]
+      "required": ["url", "ratio", "createdAt"]
     }
   },
   "firestore": {
