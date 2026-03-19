@@ -8,6 +8,13 @@
 //   - createdAt: timestamp (required)
 //   - order: number (optional)
 //
+// Collection: videos
+// Fields:
+//   - url: string (required)
+//   - storagePath: string (required)
+//   - ratio: string (required, enum: ["9:16", "16:9", "1:1"])
+//   - createdAt: timestamp (required)
+//
 // Collection: services
 // Fields:
 //   - serviceId: string (required)
@@ -50,6 +57,12 @@ service cloud.firestore {
 
     // Gallery Rules
     match /gallery/{imageId} {
+      allow read: if true; // Publicly readable
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Video Rules
+    match /videos/{videoId} {
       allow read: if true; // Publicly readable
       allow create, update, delete: if isAdmin();
     }

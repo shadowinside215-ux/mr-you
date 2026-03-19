@@ -24,6 +24,7 @@ import {
   LogOut,
   LogIn,
   Upload,
+  Video,
   Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -48,7 +49,12 @@ import {
   setDoc,
   serverTimestamp,
   updateDoc,
-  getDocFromServer
+  getDocFromServer,
+  storage,
+  ref,
+  uploadBytesResumable,
+  getDownloadURL,
+  deleteObject
 } from './firebase';
 
 enum OperationType {
@@ -172,10 +178,13 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [galleryImages, setGalleryImages] = useState<any[]>([]);
+  const [galleryVideos, setGalleryVideos] = useState<any[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [serviceImages, setServiceImages] = useState<Record<string, string>>({});
   const [stagedImages, setStagedImages] = useState<{ url: string, type: 'gallery' | 'service', id?: string }[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [videoRatio, setVideoRatio] = useState<'9:16' | '16:9' | '1:1'>('9:16');
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginData, setLoginData] = useState({ name: '', password: '' });
   const [showUrlInput, setShowUrlInput] = useState<{ type: 'gallery' | 'service', id?: string } | null>(null);
@@ -212,6 +221,17 @@ export default function App() {
       setGalleryImages(images);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'gallery');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, 'videos'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const videos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setGalleryVideos(videos);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'videos');
     });
     return () => unsubscribe();
   }, []);
@@ -369,6 +389,75 @@ export default function App() {
       await deleteDoc(doc(db, 'gallery', id));
     } catch (error) {
       console.error("Delete failed", error);
+    }
+  };
+
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 1GB limit check (1024 * 1024 * 1024 bytes)
+    if (file.size > 1073741824) {
+      alert("File is too large. Maximum size is 1GB.");
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    try {
+      const storageRef = ref(storage, `videos/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(progress);
+        }, 
+        (error) => {
+          console.error("Upload failed", error);
+          alert("Upload failed: " + error.message);
+          setIsUploading(false);
+          setUploadProgress(null);
+        }, 
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          await addDoc(collection(db, 'videos'), {
+            url: downloadURL,
+            ratio: videoRatio,
+            name: file.name,
+            storagePath: storageRef.fullPath,
+            createdAt: serverTimestamp()
+          });
+          setIsUploading(false);
+          setUploadProgress(null);
+          alert("Video uploaded successfully!");
+        }
+      );
+    } catch (error) {
+      console.error("Video upload setup failed", error);
+      alert("Failed to start upload.");
+      setIsUploading(false);
+      setUploadProgress(null);
+    }
+  };
+
+  const deleteGalleryVideo = async (id: string, storagePath: string) => {
+    if (!confirm("Are you sure you want to delete this video?")) return;
+    try {
+      // Delete from storage first
+      const storageRef = ref(storage, storagePath);
+      await deleteObject(storageRef);
+      // Then delete from firestore
+      await deleteDoc(doc(db, 'videos', id));
+    } catch (error) {
+      console.error("Delete failed", error);
+      // If storage delete fails (e.g. file missing), still try to delete firestore doc
+      try {
+        await deleteDoc(doc(db, 'videos', id));
+      } catch (fsError) {
+        console.error("Firestore delete failed", fsError);
+      }
     }
   };
 
@@ -815,7 +904,7 @@ export default function App() {
             <div className="w-20 h-1 bg-secondary mx-auto rounded-full" />
           </div>
           
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
             {/* Staged Gallery Images */}
             {isAdmin && stagedImages.filter(img => img.type === 'gallery').map((img, idx) => (
               <div key={`staged-${idx}`} className="relative group rounded-2xl overflow-hidden aspect-[3/4] border-2 border-yellow-400/50">
@@ -865,11 +954,41 @@ export default function App() {
                   className="border-2 border-dashed border-white/10 rounded-2xl py-4 flex flex-col items-center justify-center gap-1 hover:bg-white/5 transition-colors"
                 >
                   <Globe size={16} className="text-slate-500" />
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Add by URL</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Add URL</span>
                 </button>
               </div>
             )}
           </div>
+
+          {/* Videos Section */}
+          {galleryVideos.length > 0 && (
+            <div className="mt-16">
+              <div className="text-center mb-12">
+                <h3 className="text-2xl font-bold mb-4 text-yellow-400 uppercase tracking-widest">Video Highlights</h3>
+                <div className="w-12 h-1 bg-secondary mx-auto rounded-full" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                {galleryVideos.map((video) => (
+                  <div key={video.id} className={`relative group rounded-3xl overflow-hidden bg-slate-900 shadow-2xl border border-white/5 ${video.ratio === '9:16' ? 'aspect-[9/16]' : video.ratio === '1:1' ? 'aspect-square' : 'aspect-video'}`}>
+                    <video 
+                      src={video.url} 
+                      className="w-full h-full object-cover" 
+                      controls 
+                      playsInline
+                    />
+                    {isAdmin && (
+                      <button 
+                        onClick={() => deleteGalleryVideo(video.id, video.storagePath)}
+                        className="absolute top-4 right-4 p-3 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-xl"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </motion.section>
 
@@ -993,6 +1112,76 @@ export default function App() {
                   </button>
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Admin Video Manager */}
+      {isAdmin && (
+        <section className="section-padding bg-slate-950 border-t border-white/10">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-6">
+              <div>
+                <h2 className="text-3xl font-bold text-yellow-400">Admin Video Manager</h2>
+                <p className="text-slate-400">Upload and manage videos (Support up to 1GB).</p>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <div className="flex bg-primary rounded-xl p-1 border border-white/10">
+                  {(['9:16', '16:9', '1:1'] as const).map((ratio) => (
+                    <button
+                      key={ratio}
+                      onClick={() => setVideoRatio(ratio)}
+                      className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${videoRatio === ratio ? 'bg-secondary text-primary' : 'text-yellow-400 hover:bg-white/5'}`}
+                    >
+                      {ratio}
+                    </button>
+                  ))}
+                </div>
+                <label className="btn-secondary cursor-pointer flex items-center gap-2">
+                  <Video size={20} />
+                  {isUploading ? `Uploading ${Math.round(uploadProgress || 0)}%` : 'Upload Video'}
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    onChange={handleVideoUpload} 
+                    accept="video/*" 
+                    disabled={isUploading}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {isUploading && (
+              <div className="w-full bg-primary h-2 rounded-full overflow-hidden mb-8 border border-white/5">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${uploadProgress}%` }}
+                  className="h-full bg-secondary"
+                />
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+              {galleryVideos.map((video) => (
+                <div key={video.id} className={`relative group rounded-2xl overflow-hidden bg-primary border border-white/5 ${video.ratio === '9:16' ? 'aspect-[9/16]' : video.ratio === '1:1' ? 'aspect-square' : 'aspect-video'}`}>
+                  <video src={video.url} className="w-full h-full object-cover" muted loop onMouseOver={e => e.currentTarget.play()} onMouseOut={e => e.currentTarget.pause()} />
+                  <div className="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-[10px] font-bold text-yellow-400 uppercase tracking-widest">
+                    {video.ratio}
+                  </div>
+                  <button 
+                    onClick={() => deleteGalleryVideo(video.id, video.storagePath)}
+                    className="absolute inset-0 flex items-center justify-center bg-red-500/80 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Trash2 size={32} />
+                  </button>
+                </div>
+              ))}
+              {galleryVideos.length === 0 && !isUploading && (
+                <div className="col-span-full py-12 text-center bg-primary/30 rounded-3xl border border-dashed border-white/10">
+                  <p className="text-slate-500">No videos uploaded yet.</p>
+                </div>
+              )}
             </div>
           </div>
         </section>
